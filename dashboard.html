@@ -126,7 +126,16 @@
       background:#1E7A46;
       box-shadow:0 0 0 2px rgba(30,122,70,.22);
     }
+    .badge.due svg{ display:block; width:14px; height:14px; }
     .badge.overdue svg{ display:block; width:14px; height:14px; }
+
+    /* Inactive vehicles - dimmed everywhere they appear */
+    .fleet-card.inactive, .veh-item.inactive{
+      opacity:.45;
+      background:#161E27;
+    }
+    .fleet-card.inactive:hover, .veh-item.inactive:hover{ opacity:.7; }
+    .fleet-card.inactive .veh{ color:var(--fog); }
     .fleet-card .veh{
       font-family:'IBM Plex Mono',monospace; font-size:18px;
       font-weight:600; color:var(--amber);
@@ -281,16 +290,20 @@
     <!-- FLEET (home) -->
     <div class="screen active" id="screen-fleet">
       <div class="section-title">Fleet Overview</div>
-      <div class="hint">Most recently serviced first. Tap a vehicle for its full history.
+      <div class="hint">Active vehicles first, most recently serviced at the top.
+        Tap a vehicle for its full history.
         <span style="display:inline-block; margin-left:10px;">
           <span style="display:inline-block; width:9px; height:9px; border-radius:50%; background:#1E7A46; vertical-align:middle;"></span>
-          serviced within 30 days
+          within 30 days
+        </span>
+        <span style="display:inline-block; margin-left:10px;">
+          <svg viewBox="0 0 24 24" fill="#C9A227" style="width:11px; height:11px; vertical-align:middle;" xmlns="http://www.w3.org/2000/svg"><path d="M12 2 1 21h22L12 2z"/><rect x="11" y="9" width="2" height="6" fill="#fff"/><rect x="11" y="17" width="2" height="2" fill="#fff"/></svg>
+          30&ndash;60 days
         </span>
         <span style="display:inline-block; margin-left:10px;">
           <svg viewBox="0 0 24 24" fill="#B3261E" style="width:11px; height:11px; vertical-align:middle;" xmlns="http://www.w3.org/2000/svg"><path d="M12 2 1 21h22L12 2z"/><rect x="11" y="9" width="2" height="6" fill="#fff"/><rect x="11" y="17" width="2" height="2" fill="#fff"/></svg>
-          nothing in 60+ days
+          60+ days
         </span>
-        <span style="color:var(--fog);">(active vehicles only)</span>
       </div>
       <div class="fleet-grid" id="fleetGrid"><div class="loading">Loading fleet&hellip;</div></div>
     </div>
@@ -472,7 +485,7 @@
           lastGroup = group;
         }
         const el = document.createElement('label');
-        el.className = 'veh-item' + (v.active ? ' on' : '');
+        el.className = 'veh-item' + (v.active ? ' on' : ' inactive');
         el.innerHTML =
           '<input type="checkbox" class="batch-cb" value="' + esc(v.vehicle) + '"' +
             (v.active ? ' checked' : '') + '>' +
@@ -523,7 +536,7 @@
           lastGroup = group;
         }
         const el = document.createElement('label');
-        el.className = 'veh-item ' + (v.active ? 'on' : 'off');
+        el.className = 'veh-item ' + (v.active ? 'on' : 'off inactive');
         el.innerHTML =
           '<input type="checkbox"' + (v.active ? ' checked' : '') + '>' +
           '<span><span class="n">#' + esc(v.vehicle) + '</span><br>' +
@@ -543,6 +556,7 @@
               v.active = want;
               el.classList.toggle('on', want);
               el.classList.toggle('off', !want);
+              el.classList.toggle('inactive', !want);
               cb.disabled = false;
               statusEl.textContent = 'Saved.';
               updateRosterCount();
@@ -724,27 +738,44 @@
         grid.innerHTML = '<div class="empty">No vehicles found.</div>';
         return;
       }
-      summary.forEach(v => {
+
+      // Active first, then inactive. Within each group, most recently serviced first.
+      const sorted = summary.slice().sort(function(a, b){
+        if (a.active !== b.active) return a.active ? -1 : 1;
+        const da = a.daysSinceService === null ? Infinity : a.daysSinceService;
+        const db = b.daysSinceService === null ? Infinity : b.daysSinceService;
+        return da - db;
+      });
+
+      let lastGroup = null;
+      sorted.forEach(v => {
+        const group = v.active ? 'Active' : 'Inactive';
+        if (group !== lastGroup) {
+          const hdr = document.createElement('div');
+          hdr.className = 'group-label';
+          hdr.textContent = group;
+          grid.appendChild(hdr);
+          lastGroup = group;
+        }
+
         const card = document.createElement('div');
-        card.className = 'fleet-card';
+        card.className = 'fleet-card' + (v.active ? '' : ' inactive');
 
         // Status badge - active vehicles only.
-        //   serviced within 30 days -> green dot
-        //   nothing in 60+ days     -> red warning triangle
-        //   in between              -> no badge
+        //   within 30 days -> green dot
+        //   31 to 59 days  -> yellow warning
+        //   60+ days       -> red warning
         let badge = '';
         if (v.active && v.daysSinceService !== null) {
-          if (v.daysSinceService <= 30) {
-            badge = '<span class="badge ok" title="Serviced ' + v.daysSinceService +
-                    ' day(s) ago"></span>';
-          } else if (v.daysSinceService >= 60) {
-            badge = '<span class="badge overdue" title="No service in ' +
-                    v.daysSinceService + ' days">' +
-                    '<svg viewBox="0 0 24 24" fill="#B3261E" xmlns="http://www.w3.org/2000/svg">' +
-                    '<path d="M12 2 1 21h22L12 2z"/>' +
-                    '<rect x="11" y="9" width="2" height="6" fill="#fff"/>' +
-                    '<rect x="11" y="17" width="2" height="2" fill="#fff"/>' +
-                    '</svg></span>';
+          const d = v.daysSinceService;
+          if (d <= 30) {
+            badge = '<span class="badge ok" title="Serviced ' + d + ' day(s) ago"></span>';
+          } else if (d < 60) {
+            badge = '<span class="badge due" title="No service in ' + d + ' days">' +
+                    warnSvg('#C9A227') + '</span>';
+          } else {
+            badge = '<span class="badge overdue" title="No service in ' + d + ' days">' +
+                    warnSvg('#B3261E') + '</span>';
           }
         }
 
@@ -755,6 +786,14 @@
         card.addEventListener('click', () => loadVehicle(v.vehicle));
         grid.appendChild(card);
       });
+    }
+
+    function warnSvg(color){
+      return '<svg viewBox="0 0 24 24" fill="' + color + '" xmlns="http://www.w3.org/2000/svg">' +
+             '<path d="M12 2 1 21h22L12 2z"/>' +
+             '<rect x="11" y="9" width="2" height="6" fill="#fff"/>' +
+             '<rect x="11" y="17" width="2" height="2" fill="#fff"/>' +
+             '</svg>';
     }
 
     // ---- cost per mile ----
