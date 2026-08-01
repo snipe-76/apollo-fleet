@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,6 +7,7 @@
   <title>Apollo Express &mdash; Fleet Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
   <style>
     :root{
       --ink:#12181F;
@@ -535,12 +537,65 @@
       document.getElementById('batchYear').value = now.getFullYear();
     })();
 
-    // shared: turn a base64 PDF into a download
-    function downloadPdf(base64, filename){
-      const byteChars = atob(base64);
-      const byteNumbers = new Array(byteChars.length);
-      for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
-      const blob = new Blob([new Uint8Array(byteNumbers)], { type: 'application/pdf' });
+    // ---- PDF generation (runs in the browser via pdf-lib) ----
+    // The blank MGBA-355 lives in this repo next to these files.
+    const MMR_TEMPLATE_URL = 'MGBA-355_US_MMR.pdf';
+    let templateBytesCache = null;
+
+    async function getTemplateBytes(){
+      if (templateBytesCache) return templateBytesCache;
+      const res = await fetch(MMR_TEMPLATE_URL);
+      if (!res.ok) throw new Error('Could not load MGBA-355_US_MMR.pdf from the site. ' +
+        'Upload the blank FedEx form to the repo with that exact filename.');
+      templateBytesCache = await res.arrayBuffer();
+      return templateBytesCache;
+    }
+
+    // Fills one form from a data object returned by action=mmrdata
+    async function buildOnePage(data, masterDoc){
+      const doc = await PDFLib.PDFDocument.load(await getTemplateBytes());
+      const form = doc.getForm();
+      const set = function(field, value){
+        try { form.getTextField(field).setText(String(value || '')); } catch (e) {}
+      };
+
+      set('Maintenance Record for the Month and Year of', data.monthYear);
+      set('Domicile StationHub', data.domicile);
+      set('Service Provider Company Name', data.company);
+      set('Current Mileage Odometer Reading', data.mileage);
+      set('Vehicle Unit', data.vehicle);
+      set('Date Completed', data.dateCompleted);
+
+      const entries = data.entries || [];
+      entries.slice(0, 5).forEach(function(e, i){
+        set('Date of MaintenanceRow' + (i + 1), e.date);
+        set('Specific Description of Maintenance PerformedRow' + (i + 1), e.desc);
+      });
+
+      let note = '';
+      if (entries.length > 5) {
+        const combined = entries.slice(4).map(function(e){ return e.desc; }).join(' | ');
+        set('Specific Description of Maintenance PerformedRow5', combined);
+        note = 'Vehicle ' + data.vehicle + ': ' + entries.length +
+          ' events but only 5 line slots - rows 5+ combined into the last line. Review before submitting.';
+      }
+
+      try {
+        if (entries.length > 0) form.getCheckBox('Check Box3').check(); // Q1 Yes
+        else form.getCheckBox('Check Box1').check();                    // Q1 No
+      } catch (e) {}
+
+      if (masterDoc) {
+        form.flatten(); // avoids duplicate field names when merging
+        const pages = await masterDoc.copyPages(doc, [0]);
+        masterDoc.addPage(pages[0]);
+        return { note: note };
+      }
+      return { doc: doc, note: note };
+    }
+
+    function saveAndDownload(bytes, filename){
+      const blob = new Blob([bytes], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url; a.download = filename;
@@ -548,14 +603,14 @@
       URL.revokeObjectURL(url);
     }
 
-    document.getElementById('batchBtn').addEventListener('click', function(){
+    document.getElementById('batchBtn').addEventListener('click', async function(){
       const month = document.getElementById('batchMonth').value;
       const year = document.getElementById('batchYear').value;
       const statusEl = document.getElementById('batchStatus');
       const btn = document.getElementById('batchBtn');
 
       const selected = Array.from(document.querySelectorAll('.batch-cb:checked'))
-        .map(cb => cb.value);
+        .map(function(cb){ return cb.value; });
       if (selected.length === 0) {
         statusEl.className = 'err';
         statusEl.textContent = 'Select at least one vehicle.';
@@ -567,23 +622,33 @@
 
       btn.disabled = true;
       statusEl.className = '';
-      statusEl.textContent = 'Building ' + selected.length +
-        ' page(s)\\u2026 this can take a minute.';
+      statusEl.textContent = 'Fetching data\u2026';
 
-      api({ action: 'mmrbatch', month: month, year: year,
-            vehicles: selected.join(','), pin: pin })
-        .then(function(res){
-          btn.disabled = false;
-          downloadPdf(res.base64, res.filename);
-          statusEl.className = 'ok';
-          statusEl.textContent = res.vehicleCount + ' vehicle(s), ' + res.withWorkCount +
-            ' with work logged. ' + (res.overflowNote || 'Downloaded.');
-        })
-        .catch(function(err){
-          btn.disabled = false;
-          statusEl.className = 'err';
-          statusEl.textContent = 'Error: ' + err.message;
-        });
+      try {
+        const all = await api({ action: 'mmrdata', month: month, year: year,
+                                vehicles: selected.join(','), pin: pin });
+        const master = await PDFLib.PDFDocument.create();
+        const notes = [];
+        let withWork = 0;
+
+        for (let i = 0; i < all.length; i++) {
+          statusEl.textContent = 'Building page ' + (i + 1) + ' of ' + all.length + '\u2026';
+          if (all[i].entries.length > 0) withWork++;
+          const r = await buildOnePage(all[i], master);
+          if (r.note) notes.push(r.note);
+        }
+
+        const bytes = await master.save();
+        saveAndDownload(bytes, 'MMR_Batch_' + month + year + '.pdf');
+
+        statusEl.className = 'ok';
+        statusEl.textContent = all.length + ' vehicle(s), ' + withWork +
+          ' with work logged. ' + (notes.join(' ') || 'Downloaded.');
+      } catch (err) {
+        statusEl.className = 'err';
+        statusEl.textContent = 'Error: ' + err.message;
+      }
+      btn.disabled = false;
     });
 
     // ---- fleet overview ----
@@ -698,7 +763,7 @@
     }
 
     // ---- MMR generation ----
-    document.getElementById('mmrBtn').addEventListener('click', function(){
+    document.getElementById('mmrBtn').addEventListener('click', async function(){
       const vehicle = mmrVehicleSelect.value;
       const month = document.getElementById('mmrMonth').value;
       const year = document.getElementById('mmrYear').value;
@@ -718,19 +783,22 @@
       statusEl.className = '';
       statusEl.textContent = 'Generating\u2026';
 
-      api({ action: 'mmr', vehicle: vehicle, month: month, year: year, pin: pin })
-        .then(function(res){
-          btn.disabled = false;
-          downloadPdf(res.base64, res.filename);
-          statusEl.className = 'ok';
-          statusEl.textContent = res.eventCount + ' event(s) found. ' +
-            (res.overflowNote || 'Downloaded.');
-        })
-        .catch(function(err){
-          btn.disabled = false;
-          statusEl.className = 'err';
-          statusEl.textContent = 'Error: ' + err.message;
-        });
+      try {
+        const all = await api({ action: 'mmrdata', vehicles: vehicle,
+                                month: month, year: year, pin: pin });
+        const data = all[0];
+        const built = await buildOnePage(data, null);
+        const bytes = await built.doc.save();
+        saveAndDownload(bytes, 'MMR_' + vehicle + '_' + month + year + '.pdf');
+
+        statusEl.className = 'ok';
+        statusEl.textContent = data.entries.length + ' event(s) found. ' +
+          (built.note || 'Downloaded.');
+      } catch (err) {
+        statusEl.className = 'err';
+        statusEl.textContent = 'Error: ' + err.message;
+      }
+      btn.disabled = false;
     });
   </script>
 </body>
