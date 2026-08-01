@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Apollo Express &mdash; Fleet Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --ink:#12181F;
+      --panel:#1B2530;
+      --panel-2:#212D3A;
+      --line:#324152;
+      --fog:#8A97A8;
+      --paper:#EDEFF2;
+      --amber:#D9822F;
+      --steel:#6FA8DC;
+      --repair:#E0674D;
+      --maint:#3FC48B;
+    }
+    *{box-sizing:border-box;}
+    body{
+      margin:0; background:var(--ink); color:var(--paper);
+      font-family:'Inter',sans-serif; min-height:100vh;
+    }
+    header{
+      padding:18px 20px 0; border-bottom:1px solid var(--line);
+    }
+    .head-top{ display:flex; align-items:center; gap:14px; margin-bottom:14px; }
+    .head-top img{ height:44px; width:auto; }
+    .brand-text{ display:flex; flex-direction:column; }
+    .eyebrow{
+      font-family:'IBM Plex Mono',monospace; font-size:11px;
+      letter-spacing:.14em; text-transform:uppercase; color:var(--steel);
+    }
+    h1{
+      font-family:'Oswald',sans-serif; font-size:23px;
+      text-transform:uppercase; letter-spacing:.01em; margin:2px 0 0;
+    }
+    nav{ display:flex; gap:4px; flex-wrap:wrap; }
+    .tab{
+      background:none; border:none; border-bottom:2px solid transparent;
+      color:var(--fog); font-family:'Oswald',sans-serif; font-size:14px;
+      letter-spacing:.05em; text-transform:uppercase; padding:10px 14px;
+      cursor:pointer; transition:color .12s ease, border-color .12s ease;
+    }
+    .tab:hover{ color:var(--paper); }
+    .tab.active{ color:var(--amber); border-bottom-color:var(--amber); }
+    .tab-link{
+      text-decoration:none; display:inline-block; color:var(--steel);
+      margin-left:auto;
+    }
+    .tab-link:hover{ color:var(--paper); }
+
+    /* Vehicle roster + batch picker */
+    .roster-bar{
+      display:flex; gap:10px; align-items:center;
+      flex-wrap:wrap; margin-bottom:14px;
+    }
+    .mini-btn{
+      background:transparent; border:1.5px solid var(--line); color:var(--paper);
+      border-radius:7px; padding:7px 12px; font-family:'Inter',sans-serif;
+      font-size:12.5px; cursor:pointer;
+    }
+    .mini-btn:hover{ border-color:var(--amber); color:var(--amber); }
+    .roster-count{
+      font-family:'IBM Plex Mono',monospace;
+      font-size:12.5px; color:var(--fog);
+    }
+    .veh-list{
+      display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr));
+      gap:8px;
+    }
+    .veh-item{
+      background:var(--panel); border:1px solid var(--line); border-radius:9px;
+      padding:11px 13px; display:flex; align-items:center; gap:10px; cursor:pointer;
+      user-select:none;
+    }
+    .veh-item:hover{ border-color:var(--steel); }
+    .veh-item.on{ border-color:var(--amber); }
+    .veh-item input{ accent-color:var(--amber); width:16px; height:16px; cursor:pointer; }
+    .veh-item .n{ font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:14px; }
+    .veh-item .d{ font-size:11.5px; color:var(--fog); }
+    .veh-item.off .n{ color:var(--fog); }
+
+    main{ padding:24px 20px 60px; max-width:1000px; margin:0 auto; }
+    .screen{ display:none; }
+    .screen.active{ display:block; }
+
+    .section-title{
+      font-family:'Oswald',sans-serif; text-transform:uppercase; font-size:15px;
+      letter-spacing:.04em; color:var(--fog); margin:0 0 14px;
+    }
+    .hint{ color:var(--fog); font-size:13px; margin:-6px 0 18px; }
+    .empty, .loading{ color:var(--fog); font-size:14px; padding:30px 0; text-align:center; }
+
+    /* Fleet grid */
+    .fleet-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(215px,1fr)); gap:12px; }
+    .fleet-card{
+      background:var(--panel); border:1px solid var(--line); border-radius:12px;
+      padding:15px; cursor:pointer; transition:border-color .12s ease, transform .08s ease;
+    }
+    .fleet-card:hover{ border-color:var(--amber); transform:translateY(-1px); }
+    .fleet-card .veh{
+      font-family:'IBM Plex Mono',monospace; font-size:18px;
+      font-weight:600; color:var(--amber);
+    }
+    .fleet-card .last{ font-size:12.5px; color:var(--paper); margin-top:6px; }
+    .fleet-card .count{ font-size:12px; color:var(--fog); margin-top:3px; }
+
+    /* Cost per mile */
+    .offender-list{ display:flex; flex-direction:column; gap:8px; }
+    .offender-row{
+      background:var(--panel); border:1px solid var(--line); border-radius:10px;
+      padding:12px 15px; display:grid; grid-template-columns:32px 1fr auto;
+      gap:14px; align-items:center; cursor:pointer;
+    }
+    .offender-row:hover{ border-color:var(--amber); }
+    .offender-rank{
+      font-family:'IBM Plex Mono',monospace; font-size:13px;
+      color:var(--fog); text-align:center;
+    }
+    .offender-row:nth-child(1) .offender-rank{ color:var(--amber); font-weight:600; }
+    .offender-main .veh{ font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:15px; }
+    .offender-main .sub{ font-size:12.5px; color:var(--fog); margin-top:2px; }
+    .offender-cpm{ text-align:right; font-family:'IBM Plex Mono',monospace; }
+    .offender-cpm .val{ font-size:17px; font-weight:600; color:var(--amber); }
+    .offender-cpm .label{
+      font-size:10.5px; color:var(--fog);
+      text-transform:uppercase; letter-spacing:.05em;
+    }
+
+    /* MMR panel */
+    .mmr-panel{
+      background:var(--panel); border:1px solid var(--line); border-radius:12px;
+      padding:18px; display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap;
+    }
+    .fld{ display:flex; flex-direction:column; gap:5px; }
+    .fld label{
+      font-size:11px; letter-spacing:.06em;
+      text-transform:uppercase; color:var(--fog);
+    }
+    .fld select, .fld input{
+      background:var(--ink); color:var(--paper); border:1.5px solid var(--line);
+      border-radius:7px; padding:9px 10px;
+      font-family:'IBM Plex Mono',monospace; font-size:13px;
+    }
+    .fld input[type=number]{ width:88px; }
+    #mmrBtn, #batchBtn{
+      background:var(--amber); color:#1B1200; border:none; border-radius:7px;
+      padding:11px 18px; font-family:'Oswald',sans-serif; font-weight:600;
+      font-size:13px; letter-spacing:.04em; text-transform:uppercase; cursor:pointer;
+    }
+    #mmrBtn:disabled, #batchBtn:disabled{ background:#6b5a2e; color:#c9c2ac; cursor:default; }
+    #mmrStatus, #batchStatus{
+      font-family:'IBM Plex Mono',monospace; font-size:12.5px;
+      color:var(--fog); width:100%;
+    }
+    #mmrStatus.err, #batchStatus.err{ color:var(--repair); }
+    #mmrStatus.ok, #batchStatus.ok{ color:var(--maint); }
+
+    /* Vehicle detail */
+    .veh-banner{
+      background:var(--panel-2); border:1px solid var(--line);
+      border-left:4px solid var(--amber); border-radius:12px;
+      padding:16px 20px; margin-bottom:20px;
+      display:flex; align-items:center; justify-content:space-between;
+      gap:14px; flex-wrap:wrap;
+    }
+    .veh-banner .lbl{
+      font-family:'IBM Plex Mono',monospace; font-size:11px;
+      letter-spacing:.12em; text-transform:uppercase; color:var(--fog);
+    }
+    .veh-banner .num{
+      font-family:'Oswald',sans-serif; font-size:34px; font-weight:700;
+      color:var(--amber); line-height:1.1; letter-spacing:.02em;
+    }
+    .back-btn{
+      background:transparent; border:1.5px solid var(--line); color:var(--paper);
+      border-radius:8px; padding:9px 15px; font-family:'Oswald',sans-serif;
+      font-size:13px; letter-spacing:.04em; text-transform:uppercase; cursor:pointer;
+    }
+    .back-btn:hover{ border-color:var(--amber); color:var(--amber); }
+
+    .stat-grid{
+      display:grid; grid-template-columns:repeat(auto-fit,minmax(145px,1fr));
+      gap:12px; margin-bottom:26px;
+    }
+    .stat{
+      background:var(--panel); border:1px solid var(--line);
+      border-radius:12px; padding:15px;
+    }
+    .stat-label{
+      font-size:11px; letter-spacing:.08em; text-transform:uppercase;
+      color:var(--fog); margin-bottom:7px;
+    }
+    .stat-val{
+      font-family:'IBM Plex Mono',monospace; font-size:22px;
+      font-weight:600; color:var(--amber);
+    }
+
+    .log-list{ display:flex; flex-direction:column; gap:8px; }
+    .log-row{
+      background:var(--panel); border:1px solid var(--line); border-radius:10px;
+      padding:13px 15px; display:grid; grid-template-columns:96px 1fr auto;
+      gap:12px; align-items:center;
+    }
+    .tag{
+      font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:600;
+      letter-spacing:.05em; text-transform:uppercase; padding:4px 8px;
+      border-radius:5px; text-align:center;
+    }
+    .tag.repair{ background:rgba(224,103,77,.16); color:var(--repair); }
+    .tag.maint{ background:rgba(63,196,139,.16); color:var(--maint); }
+    .log-main .item{ font-weight:600; font-size:14px; }
+    .log-main .desc{ font-size:13px; color:var(--fog); margin-top:2px; }
+    .log-meta{
+      text-align:right; font-family:'IBM Plex Mono',monospace;
+      font-size:12.5px; color:var(--fog); white-space:nowrap;
+    }
+    .log-meta .cost{ color:var(--paper); font-weight:600; display:block; }
+    .log-meta .mi{ display:block; margin-top:2px; }
+
+    @media (max-width:560px){
+      .log-row{ grid-template-columns:1fr; gap:8px; }
+      .log-meta{ text-align:left; }
+      .veh-banner .num{ font-size:28px; }
+    }
+
+    footer{
+      text-align:center; color:var(--fog); font-size:12px;
+      padding:20px; font-family:'IBM Plex Mono',monospace;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="head-top">
+      <img src="data:image/png;base64,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" alt="Apollo Express">
+      <div class="brand-text">
+        <span class="eyebrow">Fleet Maintenance</span>
+        <h1>Vehicle Dashboard</h1>
+      </div>
+    </div>
+    <nav>
+      <button class="tab active" data-screen="fleet">Fleet</button>
+      <button class="tab" data-screen="cpm">Cost Per Mile</button>
+      <button class="tab" data-screen="mmr">FedEx MMR</button>
+      <button class="tab" data-screen="vehicles">Vehicles</button>
+      <a class="tab tab-link" href="index.html">Log Entry &rarr;</a>
+    </nav>
+  </header>
+
+  <main>
+    <!-- FLEET (home) -->
+    <div class="screen active" id="screen-fleet">
+      <div class="section-title">Fleet Overview</div>
+      <div class="hint">Most recently serviced first. Tap a vehicle for its full history.</div>
+      <div class="fleet-grid" id="fleetGrid"><div class="loading">Loading fleet&hellip;</div></div>
+    </div>
+
+    <!-- COST PER MILE -->
+    <div class="screen" id="screen-cpm">
+      <div class="section-title">Cost Per Mile &mdash; Highest First</div>
+      <div class="hint">Only vehicles with at least one entry in the last 12 months.</div>
+      <div class="offender-list" id="offenderList"><div class="loading">Loading&hellip;</div></div>
+    </div>
+
+    <!-- MMR -->
+    <div class="screen" id="screen-mmr">
+      <div class="section-title">Generate FedEx Monthly Maintenance Record</div>
+      <div class="hint">Fills the official MGBA-355 form and downloads it as a PDF.</div>
+      <div class="mmr-panel">
+        <div class="fld">
+          <label for="mmrVehicle">Vehicle #</label>
+          <select id="mmrVehicle"></select>
+        </div>
+        <div class="fld">
+          <label for="mmrMonth">Month</label>
+          <select id="mmrMonth">
+            <option>January</option><option>February</option><option>March</option>
+            <option>April</option><option>May</option><option>June</option>
+            <option>July</option><option>August</option><option>September</option>
+            <option>October</option><option>November</option><option>December</option>
+          </select>
+        </div>
+        <div class="fld">
+          <label for="mmrYear">Year</label>
+          <input type="number" id="mmrYear" value="2026">
+        </div>
+        <button id="mmrBtn">Generate MMR PDF</button>
+        <div id="mmrStatus"></div>
+      </div>
+
+      <div class="section-title" style="margin-top:32px;">Batch &mdash; Multiple Vehicles</div>
+      <div class="hint">FedEx requires one record per vehicle each month, even with no work done.
+        This builds a single PDF with one page per selected vehicle. Starts pre-checked
+        with everything marked Active.</div>
+      <div class="mmr-panel" style="flex-direction:column; align-items:stretch;">
+        <div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;">
+          <div class="fld">
+            <label for="batchMonth">Month</label>
+            <select id="batchMonth">
+              <option>January</option><option>February</option><option>March</option>
+              <option>April</option><option>May</option><option>June</option>
+              <option>July</option><option>August</option><option>September</option>
+              <option>October</option><option>November</option><option>December</option>
+            </select>
+          </div>
+          <div class="fld">
+            <label for="batchYear">Year</label>
+            <input type="number" id="batchYear" value="2026">
+          </div>
+          <button id="batchBtn">Generate Batch PDF</button>
+        </div>
+
+        <div class="roster-bar" style="margin-top:18px;">
+          <button class="mini-btn" id="batchAll">Select all</button>
+          <button class="mini-btn" id="batchNone">Clear all</button>
+          <button class="mini-btn" id="batchActive">Reset to Active</button>
+          <span class="roster-count" id="batchCount">&mdash;</span>
+        </div>
+        <div class="veh-list" id="batchList"><div class="loading">Loading vehicles&hellip;</div></div>
+        <div id="batchStatus"></div>
+      </div>
+    </div>
+
+    <!-- VEHICLES -->
+    <div class="screen" id="screen-vehicles">
+      <div class="section-title">Vehicle Roster</div>
+      <div class="hint">Check a vehicle to mark it Active. Active vehicles are what the
+        batch MMR defaults to. Changes save to the Vehicles tab immediately.</div>
+      <div class="roster-bar">
+        <span class="roster-count" id="rosterCount">&mdash;</span>
+        <span class="roster-count" id="rosterStatus"></span>
+      </div>
+      <div class="veh-list" id="rosterList"><div class="loading">Loading roster&hellip;</div></div>
+    </div>
+    </div>
+
+    <!-- VEHICLE DETAIL -->
+    <div class="screen" id="screen-vehicle">
+      <div class="veh-banner">
+        <div>
+          <div class="lbl">Viewing Vehicle</div>
+          <div class="num" id="vehBannerNum">&mdash;</div>
+        </div>
+        <button class="back-btn" id="backBtn">&larr; Back to Fleet</button>
+      </div>
+      <div class="stat-grid" id="statGrid"></div>
+      <div class="section-title">Service History</div>
+      <div class="log-list" id="logList"></div>
+    </div>
+  </main>
+
+  <footer>Data pulled live from the Maintenance Log</footer>
+
+  <script>
+    const API = 'https://script.google.com/macros/s/AKfycbzNC5L925umRPdR_gOzJ2SJunmdjgD1nbzKk7nK0qOTcdZpve1ApNTttxxKp9rfNTyLRA/exec';
+
+    async function api(params) {
+      const qs = new URLSearchParams(params).toString();
+      const res = await fetch(API + '?' + qs);
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error || 'Request failed');
+      return json.data;
+    }
+
+    // ---- number formatting ----
+    function money(n, decimals) {
+      if (n === null || n === undefined || isNaN(n)) return '\u2014';
+      return '$' + Number(n).toLocaleString('en-US', {
+        minimumFractionDigits: decimals === undefined ? 0 : decimals,
+        maximumFractionDigits: decimals === undefined ? 0 : decimals
+      });
+    }
+    function num(n) {
+      if (n === null || n === undefined || isNaN(n)) return '\u2014';
+      return Number(n).toLocaleString('en-US');
+    }
+    function esc(s) {
+      return String(s === null || s === undefined ? '' : s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    // ---- screen routing ----
+    function showScreen(name) {
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      document.getElementById('screen-' + name).classList.add('active');
+      document.querySelectorAll('.tab').forEach(t => {
+        t.classList.toggle('active', t.dataset.screen === name);
+      });
+      window.scrollTo(0, 0);
+    }
+    document.querySelectorAll('.tab').forEach(t => {
+      if (t.dataset.screen) {
+        t.addEventListener('click', () => showScreen(t.dataset.screen));
+      }
+    });
+    document.getElementById('backBtn').addEventListener('click', () => showScreen('fleet'));
+
+    // ---- vehicle roster (drives both the batch picker and the Vehicles screen) ----
+    let roster = [];
+
+    api({ action: 'roster' }).then(function(data){
+      roster = data;
+      renderBatchList();
+      renderRoster();
+    }).catch(function(err){
+      document.getElementById('batchList').innerHTML =
+        '<div class="empty">Could not load vehicles: ' + esc(err.message) + '</div>';
+      document.getElementById('rosterList').innerHTML =
+        '<div class="empty">Could not load roster: ' + esc(err.message) + '</div>';
+    });
+
+    function renderBatchList(){
+      const list = document.getElementById('batchList');
+      list.innerHTML = '';
+      roster.forEach(v => {
+        const el = document.createElement('label');
+        el.className = 'veh-item' + (v.active ? ' on' : '');
+        el.innerHTML =
+          '<input type="checkbox" class="batch-cb" value="' + esc(v.vehicle) + '"' +
+            (v.active ? ' checked' : '') + '>' +
+          '<span><span class="n">#' + esc(v.vehicle) + '</span><br>' +
+          '<span class="d">' + esc(v.domicile || '') + '</span></span>';
+        el.querySelector('input').addEventListener('change', function(){
+          el.classList.toggle('on', this.checked);
+          updateBatchCount();
+        });
+        list.appendChild(el);
+      });
+      updateBatchCount();
+    }
+
+    function updateBatchCount(){
+      const n = document.querySelectorAll('.batch-cb:checked').length;
+      document.getElementById('batchCount').textContent = n + ' selected';
+    }
+
+    document.getElementById('batchAll').addEventListener('click', function(){
+      document.querySelectorAll('.batch-cb').forEach(cb => {
+        cb.checked = true;
+        cb.closest('.veh-item').classList.add('on');
+      });
+      updateBatchCount();
+    });
+    document.getElementById('batchNone').addEventListener('click', function(){
+      document.querySelectorAll('.batch-cb').forEach(cb => {
+        cb.checked = false;
+        cb.closest('.veh-item').classList.remove('on');
+      });
+      updateBatchCount();
+    });
+    document.getElementById('batchActive').addEventListener('click', renderBatchList);
+
+    // ---- Vehicles screen: toggling writes straight back to the sheet ----
+    function renderRoster(){
+      const list = document.getElementById('rosterList');
+      list.innerHTML = '';
+      roster.forEach(v => {
+        const el = document.createElement('label');
+        el.className = 'veh-item ' + (v.active ? 'on' : 'off');
+        el.innerHTML =
+          '<input type="checkbox"' + (v.active ? ' checked' : '') + '>' +
+          '<span><span class="n">#' + esc(v.vehicle) + '</span><br>' +
+          '<span class="d">' + esc(v.domicile || '') + '</span></span>';
+        const cb = el.querySelector('input');
+        cb.addEventListener('change', function(){
+          const want = this.checked;
+          const statusEl = document.getElementById('rosterStatus');
+          cb.disabled = true;
+          statusEl.textContent = 'Saving\\u2026';
+
+          const pin = getRosterPin();
+          if (!pin) { cb.checked = !want; cb.disabled = false; statusEl.textContent = ''; return; }
+
+          api({ action: 'setactive', vehicle: v.vehicle, active: want, pin: pin })
+            .then(function(){
+              v.active = want;
+              el.classList.toggle('on', want);
+              el.classList.toggle('off', !want);
+              cb.disabled = false;
+              statusEl.textContent = 'Saved.';
+              updateRosterCount();
+              renderBatchList();
+            })
+            .catch(function(err){
+              cb.checked = !want;
+              cb.disabled = false;
+              rosterPin = null; // wrong PIN - ask again next time
+              statusEl.textContent = 'Error: ' + err.message;
+            });
+        });
+        list.appendChild(el);
+      });
+      updateRosterCount();
+    }
+
+    function updateRosterCount(){
+      const n = roster.filter(v => v.active).length;
+      document.getElementById('rosterCount').textContent =
+        n + ' of ' + roster.length + ' active';
+    }
+
+    // Ask for the PIN once per session for roster edits
+    let rosterPin = null;
+    function getRosterPin(){
+      if (!rosterPin) rosterPin = window.prompt('Station PIN (to edit the roster):');
+      return rosterPin;
+    }
+
+    // ---- vehicle dropdown (MMR screen) ----
+    const mmrVehicleSelect = document.getElementById('mmrVehicle');
+    api({ action: 'vehicles' }).then(function(vehicles){
+      vehicles.forEach(v => {
+        const o = document.createElement('option');
+        o.value = v; o.textContent = v;
+        mmrVehicleSelect.appendChild(o);
+      });
+    }).catch(function(err){
+      const s = document.getElementById('mmrStatus');
+      s.textContent = 'Could not load vehicles: ' + err.message;
+      s.className = 'err';
+    });
+
+    (function(){
+      const months = ['January','February','March','April','May','June',
+                      'July','August','September','October','November','December'];
+      const now = new Date();
+      document.getElementById('mmrMonth').value = months[now.getMonth()];
+      document.getElementById('mmrYear').value = now.getFullYear();
+      document.getElementById('batchMonth').value = months[now.getMonth()];
+      document.getElementById('batchYear').value = now.getFullYear();
+    })();
+
+    // shared: turn a base64 PDF into a download
+    function downloadPdf(base64, filename){
+      const byteChars = atob(base64);
+      const byteNumbers = new Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
+      const blob = new Blob([new Uint8Array(byteNumbers)], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    document.getElementById('batchBtn').addEventListener('click', function(){
+      const month = document.getElementById('batchMonth').value;
+      const year = document.getElementById('batchYear').value;
+      const statusEl = document.getElementById('batchStatus');
+      const btn = document.getElementById('batchBtn');
+
+      const selected = Array.from(document.querySelectorAll('.batch-cb:checked'))
+        .map(cb => cb.value);
+      if (selected.length === 0) {
+        statusEl.className = 'err';
+        statusEl.textContent = 'Select at least one vehicle.';
+        return;
+      }
+
+      const pin = window.prompt('Station PIN:');
+      if (!pin) return;
+
+      btn.disabled = true;
+      statusEl.className = '';
+      statusEl.textContent = 'Building ' + selected.length +
+        ' page(s)\\u2026 this can take a minute.';
+
+      api({ action: 'mmrbatch', month: month, year: year,
+            vehicles: selected.join(','), pin: pin })
+        .then(function(res){
+          btn.disabled = false;
+          downloadPdf(res.base64, res.filename);
+          statusEl.className = 'ok';
+          statusEl.textContent = res.vehicleCount + ' vehicle(s), ' + res.withWorkCount +
+            ' with work logged. ' + (res.overflowNote || 'Downloaded.');
+        })
+        .catch(function(err){
+          btn.disabled = false;
+          statusEl.className = 'err';
+          statusEl.textContent = 'Error: ' + err.message;
+        });
+    });
+
+    // ---- fleet overview ----
+    api({ action: 'fleet' }).then(renderFleet).catch(function(err){
+      document.getElementById('fleetGrid').innerHTML =
+        '<div class="empty">Could not load fleet: ' + esc(err.message) + '</div>';
+    });
+
+    function renderFleet(summary){
+      const grid = document.getElementById('fleetGrid');
+      grid.innerHTML = '';
+      if (!summary || summary.length === 0) {
+        grid.innerHTML = '<div class="empty">No vehicles found.</div>';
+        return;
+      }
+      summary.forEach(v => {
+        const card = document.createElement('div');
+        card.className = 'fleet-card';
+        card.innerHTML =
+          '<div class="veh">#' + esc(v.vehicle) + '</div>' +
+          '<div class="last">Last service: ' + (v.lastUpdated ? esc(v.lastUpdated) : '\u2014') + '</div>' +
+          '<div class="count">' + v.count + ' event(s) &middot; ' + money(v.totalCost) + ' total</div>';
+        card.addEventListener('click', () => loadVehicle(v.vehicle));
+        grid.appendChild(card);
+      });
+    }
+
+    // ---- cost per mile ----
+    api({ action: 'cpm' }).then(renderOffenders).catch(function(err){
+      document.getElementById('offenderList').innerHTML =
+        '<div class="empty">Could not load report: ' + esc(err.message) + '</div>';
+    });
+
+    function renderOffenders(report){
+      const list = document.getElementById('offenderList');
+      list.innerHTML = '';
+      if (!report || report.length === 0) {
+        list.innerHTML = '<div class="empty">No vehicles with entries in the last 12 months.</div>';
+        return;
+      }
+      report.forEach((r, i) => {
+        const row = document.createElement('div');
+        row.className = 'offender-row';
+        const cpm = (r.costPerMile === null || r.costPerMile === undefined)
+          ? '\u2014' : money(r.costPerMile, 2);
+        row.innerHTML =
+          '<div class="offender-rank">' + (i + 1) + '</div>' +
+          '<div class="offender-main">' +
+            '<div class="veh">#' + esc(r.vehicle) + '</div>' +
+            '<div class="sub">' + r.eventCount + ' event(s) &middot; ' + money(r.totalCost) + ' total' +
+              (r.milesSpan ? ' &middot; ' + num(r.milesSpan) + ' mi span' : '') + '</div>' +
+          '</div>' +
+          '<div class="offender-cpm"><div class="val">' + cpm +
+            '</div><div class="label">per mile</div></div>';
+        row.addEventListener('click', () => loadVehicle(r.vehicle));
+        list.appendChild(row);
+      });
+    }
+
+    // ---- vehicle detail ----
+    function loadVehicle(vehicle){
+      document.getElementById('vehBannerNum').textContent = '#' + vehicle;
+      document.getElementById('statGrid').innerHTML = '<div class="loading">Loading&hellip;</div>';
+      document.getElementById('logList').innerHTML = '';
+      showScreen('vehicle');
+
+      api({ action: 'history', vehicle: vehicle })
+        .then(function(data){
+          renderStats(data.stats);
+          renderLog(data.rows);
+        })
+        .catch(function(err){
+          document.getElementById('statGrid').innerHTML =
+            '<div class="empty">Could not load history: ' + esc(err.message) + '</div>';
+        });
+    }
+
+    function renderStats(stats){
+      const grid = document.getElementById('statGrid');
+      grid.innerHTML =
+        stat('Total Cost', money(stats.totalCost)) +
+        stat('Cost / Year', money(stats.costPerYear)) +
+        stat('Cost / Month', money(stats.costPerMonth)) +
+        stat('Cost / Mile', stats.costPerMile ? money(stats.costPerMile, 2) : '\u2014') +
+        stat('Events Logged', num(stats.eventCount));
+    }
+    function stat(label, val){
+      return '<div class="stat"><div class="stat-label">' + label +
+             '</div><div class="stat-val">' + val + '</div></div>';
+    }
+
+    function renderLog(rows){
+      const list = document.getElementById('logList');
+      if (!rows || rows.length === 0) {
+        list.innerHTML = '<div class="empty">No history for this vehicle yet.</div>';
+        return;
+      }
+      list.innerHTML = rows.slice().reverse().map(function(r){
+        const tagClass = r.category === 'Repair' ? 'repair' : 'maint';
+        return '<div class="log-row">' +
+          '<div class="tag ' + tagClass + '">' + esc(r.category) + '</div>' +
+          '<div class="log-main"><div class="item">' + esc(r.item) +
+            '</div><div class="desc">' + esc(r.details) + '</div></div>' +
+          '<div class="log-meta">' +
+            '<span class="cost">' + money(r.cost, 2) + '</span>' +
+            esc(r.date) +
+            (r.mileage !== null && r.mileage !== undefined
+              ? '<span class="mi">' + num(r.mileage) + ' mi</span>' : '') +
+          '</div>' +
+        '</div>';
+      }).join('');
+    }
+
+    // ---- MMR generation ----
+    document.getElementById('mmrBtn').addEventListener('click', function(){
+      const vehicle = mmrVehicleSelect.value;
+      const month = document.getElementById('mmrMonth').value;
+      const year = document.getElementById('mmrYear').value;
+      const statusEl = document.getElementById('mmrStatus');
+      const btn = document.getElementById('mmrBtn');
+
+      if (!vehicle) {
+        statusEl.textContent = 'Pick a vehicle first.';
+        statusEl.className = 'err';
+        return;
+      }
+
+      const pin = window.prompt('Station PIN:');
+      if (!pin) return;
+
+      btn.disabled = true;
+      statusEl.className = '';
+      statusEl.textContent = 'Generating\u2026';
+
+      api({ action: 'mmr', vehicle: vehicle, month: month, year: year, pin: pin })
+        .then(function(res){
+          btn.disabled = false;
+          downloadPdf(res.base64, res.filename);
+          statusEl.className = 'ok';
+          statusEl.textContent = res.eventCount + ' event(s) found. ' +
+            (res.overflowNote || 'Downloaded.');
+        })
+        .catch(function(err){
+          btn.disabled = false;
+          statusEl.className = 'err';
+          statusEl.textContent = 'Error: ' + err.message;
+        });
+    });
+  </script>
+</body>
+</html>

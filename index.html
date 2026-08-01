@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>Apollo Express — Log Maintenance</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --paper:#EDEFF2;
+      --paper-2:#FFFFFF;
+      --ink:#171D24;
+      --slate:#6B7688;
+      --line:#D8DCE3;
+      --amber:#C1662B;
+      --amber-ink:#3A1F0D;
+      --purple:#2C5F8A;
+      --repair:#C0432E;
+      --maint:#2E8B57;
+      --radius:14px;
+    }
+    *{box-sizing:border-box;}
+    body{
+      margin:0;
+      background:var(--paper);
+      font-family:'Inter',sans-serif;
+      color:var(--ink);
+      min-height:100vh;
+      display:flex;
+      justify-content:center;
+      padding:28px 16px 60px;
+    }
+    .ticket{
+      width:100%;
+      max-width:520px;
+    }
+
+    .brand-mark{
+      display:flex;
+      justify-content:center;
+      margin-bottom:14px;
+    }
+    .brand-mark img{
+      height:64px;
+      width:auto;
+    }
+    .ticket-head{
+      display:flex;
+      align-items:baseline;
+      justify-content:space-between;
+      margin-bottom:6px;
+    }
+    .eyebrow{
+      font-family:'IBM Plex Mono',monospace;
+      font-size:12px;
+      letter-spacing:.12em;
+      color:var(--purple);
+      font-weight:600;
+      text-transform:uppercase;
+    }
+    h1{
+      font-family:'Oswald',sans-serif;
+      font-weight:700;
+      font-size:28px;
+      letter-spacing:.01em;
+      margin:2px 0 18px;
+      text-transform:uppercase;
+    }
+    .card{
+      background:var(--paper-2);
+      border-radius:var(--radius);
+      box-shadow:0 1px 2px rgba(23,29,36,.06), 0 8px 24px rgba(23,29,36,.06);
+      position:relative;
+      overflow:hidden;
+    }
+    .perf{
+      height:14px;
+      background-image:radial-gradient(circle at 10px 7px, var(--paper) 5px, transparent 5.5px);
+      background-size:20px 14px;
+      background-position:6px 0;
+    }
+    .card-body{ padding:26px 24px 24px; }
+    .field{ margin-bottom:18px; }
+    label{
+      display:block;
+      font-size:12px;
+      font-weight:600;
+      letter-spacing:.06em;
+      text-transform:uppercase;
+      color:var(--slate);
+      margin-bottom:6px;
+    }
+    select, input, textarea{
+      width:100%;
+      font-family:'Inter',sans-serif;
+      font-size:16px;
+      padding:12px 13px;
+      border:1.5px solid var(--line);
+      border-radius:9px;
+      background:var(--paper-2);
+      color:var(--ink);
+      -webkit-appearance:none;
+      appearance:none;
+    }
+    textarea{ resize:vertical; min-height:74px; font-family:'Inter',sans-serif; }
+    select:focus, input:focus, textarea:focus{
+      outline:none;
+      border-color:var(--amber);
+      box-shadow:0 0 0 3px rgba(244,168,29,.25);
+    }
+    .row2{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .counter{
+      font-family:'IBM Plex Mono',monospace;
+      font-size:11px;
+      color:var(--slate);
+      text-align:right;
+      margin-top:4px;
+    }
+    .counter.warn{ color:var(--amber); }
+
+    .dash-link-row{ margin-top:20px; text-align:center; }
+    .dash-link{
+      width:auto;
+      background:transparent;
+      border:1.5px solid var(--line);
+      color:var(--slate);
+      border-radius:9px;
+      padding:11px 20px;
+      font-family:'Oswald',sans-serif;
+      font-size:13px;
+      letter-spacing:.05em;
+      text-transform:uppercase;
+      cursor:pointer;
+    }
+    .dash-link:hover{ border-color:var(--purple); color:var(--purple); }
+    .dash-err{
+      font-family:'IBM Plex Mono',monospace;
+      font-size:12px;
+      color:var(--repair);
+      min-height:16px;
+      margin-top:8px;
+    }
+    .toggle-group{ display:flex; gap:8px; }
+    .toggle{
+      flex:1;
+      text-align:center;
+      padding:12px 8px;
+      border-radius:9px;
+      border:1.5px solid var(--line);
+      font-weight:600;
+      font-size:14px;
+      cursor:pointer;
+      user-select:none;
+      background:var(--paper-2);
+      transition:all .12s ease;
+    }
+    .toggle.active-repair{ background:var(--repair); border-color:var(--repair); color:#fff; }
+    .toggle.active-maint{ background:var(--maint); border-color:var(--maint); color:#fff; }
+    .submit-row{ margin-top:22px; }
+    button{
+      width:100%;
+      background:var(--purple);
+      color:#fff;
+      border:none;
+      border-radius:9px;
+      padding:15px;
+      font-family:'Oswald',sans-serif;
+      font-size:16px;
+      font-weight:600;
+      letter-spacing:.05em;
+      text-transform:uppercase;
+      cursor:pointer;
+      transition:transform .08s ease, background .15s ease;
+    }
+    button:active{ transform:scale(.98); }
+    button:disabled{ background:#A3ADBB; cursor:default; }
+    .status{
+      margin-top:14px;
+      font-family:'IBM Plex Mono',monospace;
+      font-size:13px;
+      text-align:center;
+      min-height:18px;
+    }
+    .status.ok{ color:var(--maint); }
+    .status.err{ color:var(--repair); }
+    .stub{
+      display:none;
+      text-align:center;
+      padding:34px 24px 30px;
+    }
+    .stub.show{ display:block; }
+    .stub-code{
+      font-family:'IBM Plex Mono',monospace;
+      font-size:13px;
+      color:var(--slate);
+      letter-spacing:.08em;
+    }
+    .stub h2{
+      font-family:'Oswald',sans-serif;
+      text-transform:uppercase;
+      margin:10px 0 6px;
+      font-size:22px;
+    }
+    .stub p{ color:var(--slate); font-size:14px; margin:0 0 22px; }
+    .again{
+      background:transparent;
+      border:1.5px solid var(--purple);
+      color:var(--purple);
+    }
+    .lock-wrap{
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      padding:40px 24px 34px;
+    }
+    .lock-wrap .eyebrow{ margin-bottom:4px; }
+    .lock-wrap h2{
+      font-family:'Oswald',sans-serif;
+      text-transform:uppercase;
+      font-size:20px;
+      margin:6px 0 22px;
+    }
+    .pin-boxes{
+      display:flex;
+      gap:10px;
+      margin-bottom:18px;
+    }
+    .pin-boxes input{
+      width:46px;
+      height:56px;
+      text-align:center;
+      font-family:'IBM Plex Mono',monospace;
+      font-size:24px;
+      font-weight:600;
+      padding:0;
+    }
+    .pin-boxes input.filled{ border-color:var(--amber); }
+    .lock-wrap button{ max-width:220px; }
+    .lock-err{
+      color:var(--repair);
+      font-family:'IBM Plex Mono',monospace;
+      font-size:13px;
+      min-height:18px;
+      margin-top:12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="ticket">
+    <div class="brand-mark"><img src="data:image/png;base64,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" alt="Apollo Express"></div>
+    <div class="ticket-head">
+      <span class="eyebrow">Fleet Maintenance</span>
+    </div>
+    <h1>Log a Repair or Service</h1>
+
+    <div class="card">
+      <div class="perf"></div>
+
+      <div class="lock-wrap" id="lockView">
+        <span class="eyebrow">Enter Station PIN</span>
+        <h2>Station Access</h2>
+        <div class="pin-boxes">
+          <input type="tel" inputmode="numeric" maxlength="1" class="pin-digit">
+          <input type="tel" inputmode="numeric" maxlength="1" class="pin-digit">
+          <input type="tel" inputmode="numeric" maxlength="1" class="pin-digit">
+          <input type="tel" inputmode="numeric" maxlength="1" class="pin-digit">
+        </div>
+        <button type="button" id="unlockBtn">Unlock</button>
+        <div class="lock-err" id="lockErr"></div>
+      </div>
+
+      <div class="card-body" id="formView" style="display:none;">
+        <form id="entryForm">
+          <div class="field">
+            <label for="vehicle">Vehicle #</label>
+            <select id="vehicle" required>
+              <option value="" disabled selected>Select vehicle…</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label>Type</label>
+            <div class="toggle-group">
+              <div class="toggle" id="toggleRepair" data-val="Repair">Repair</div>
+              <div class="toggle" id="toggleMaint" data-val="Maintenance">Maintenance</div>
+            </div>
+            <input type="hidden" id="category" required>
+          </div>
+
+          <div class="row2">
+            <div class="field">
+              <label for="item">Item</label>
+              <select id="item" required>
+                <option value="" disabled selected>Select&hellip;</option>
+                <option>Tires</option>
+                <option>Alignment</option>
+                <option>Brakes</option>
+                <option>Oil change</option>
+                <option>Filters</option>
+                <option>Engine</option>
+                <option>Spark plugs</option>
+                <option>Transmission</option>
+                <option>Radiator</option>
+                <option>Water pump</option>
+                <option>Fuel pump</option>
+                <option>Fuel tank</option>
+                <option>Exhaust</option>
+                <option>Muffler</option>
+                <option>Battery</option>
+                <option>Alternator</option>
+                <option>Starter</option>
+                <option>Electrical</option>
+                <option>Lights</option>
+                <option>AC</option>
+                <option>Power steering</option>
+                <option>Axle</option>
+                <option>Chassis</option>
+                <option>Shifter</option>
+                <option>Doors</option>
+                <option>Glass</option>
+                <option>Mirror</option>
+                <option>Body</option>
+                <option>Seat</option>
+                <option>Keys</option>
+                <option>Tow</option>
+                <option>Inspection</option>
+                <option>Misc parts</option>
+                <option>Other</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="cost">Cost ($)</label>
+              <input type="number" id="cost" min="0" step="0.01" placeholder="0.00" required>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="details">Details / Description</label>
+            <textarea id="details" maxlength="200" placeholder="What was done, and where&hellip;" required></textarea>
+            <div class="counter" id="detailsCount">0 / 200</div>
+          </div>
+
+          <div class="row2">
+            <div class="field">
+              <label for="serviceDate">Date of Service</label>
+              <input type="date" id="serviceDate" required>
+            </div>
+            <div class="field">
+              <label for="mileage">Mileage</label>
+              <input type="number" id="mileage" min="0" placeholder="e.g. 245000">
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="enteredBy">Entered By</label>
+            <input type="text" id="enteredBy" placeholder="Your name" required>
+          </div>
+
+          <div class="submit-row">
+            <button type="submit" id="submitBtn">Log Entry</button>
+          </div>
+          <div class="status" id="status"></div>
+        </form>
+      </div>
+
+      <div class="stub" id="stubView">
+        <div class="stub-code" id="stubCode">ENTRY LOGGED</div>
+        <h2>Got it.</h2>
+        <p id="stubDetail">Saved to the maintenance log.</p>
+        <button class="again" id="againBtn">Log Another</button>
+      </div>
+    </div>
+
+    <div class="dash-link-row">
+      <button class="dash-link" id="dashBtn">View Fleet Dashboard &rarr;</button>
+      <div class="dash-err" id="dashErr"></div>
+    </div>
+  </div>
+
+  <script>
+    // API endpoint - the Apps Script web app, called with fetch().
+    // Cross-origin fetch sends no Google cookies, so there is no account
+    // for Google to resolve, which is what makes this work everywhere.
+    const API = 'https://script.google.com/macros/s/AKfycbzNC5L925umRPdR_gOzJ2SJunmdjgD1nbzKk7nK0qOTcdZpve1ApNTttxxKp9rfNTyLRA/exec';
+
+    async function api(params) {
+      const qs = new URLSearchParams(params).toString();
+      const res = await fetch(API + '?' + qs);
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error || 'Request failed');
+      return json.data;
+    }
+
+    let enteredPin = '';
+
+    const digits = Array.from(document.querySelectorAll('.pin-digit'));
+    const lockView = document.getElementById('lockView');
+    const formViewEl = document.getElementById('formView');
+    const lockErr = document.getElementById('lockErr');
+
+    digits.forEach((d, i) => {
+      d.addEventListener('input', () => {
+        d.value = d.value.replace(/[^0-9]/g, '');
+        d.classList.toggle('filled', d.value !== '');
+        if (d.value && i < digits.length - 1) digits[i + 1].focus();
+      });
+      d.addEventListener('keydown', (e) => {
+        if (e.key === 'Backspace' && !d.value && i > 0) digits[i - 1].focus();
+        if (e.key === 'Enter') document.getElementById('unlockBtn').click();
+      });
+    });
+    digits[0].focus();
+
+    document.getElementById('unlockBtn').addEventListener('click', () => {
+      const val = digits.map(d => d.value).join('');
+      if (val.length < 4) {
+        lockErr.textContent = 'Enter all 4 digits.';
+        return;
+      }
+      // The PIN is validated on the server at submit time - it is deliberately
+      // not stored in this file, since this page is publicly readable.
+      enteredPin = val;
+      lockErr.textContent = '';
+      lockView.style.display = 'none';
+      formViewEl.style.display = 'block';
+    });
+
+    const catHidden = document.getElementById('category');
+    const tRepair = document.getElementById('toggleRepair');
+    const tMaint = document.getElementById('toggleMaint');
+    function setCategory(val){
+      catHidden.value = val;
+      tRepair.classList.toggle('active-repair', val === 'Repair');
+      tMaint.classList.toggle('active-maint', val === 'Maintenance');
+    }
+    tRepair.addEventListener('click', () => setCategory('Repair'));
+    tMaint.addEventListener('click', () => setCategory('Maintenance'));
+
+    // default date to today
+    document.getElementById('serviceDate').valueAsDate = new Date();
+
+    // live character counter - warns once the FedEx MMR line starts to shrink
+    (function(){
+      const ta = document.getElementById('details');
+      const counter = document.getElementById('detailsCount');
+      function update(){
+        const n = ta.value.length;
+        counter.textContent = n + ' / 200';
+        counter.classList.toggle('warn', n > 90);
+      }
+      ta.addEventListener('input', update);
+      update();
+    })();
+
+    // populate vehicles from the sheet
+    api({ action: 'vehicles' })
+      .then(function(vehicles){
+        const sel = document.getElementById('vehicle');
+        vehicles.forEach(v => {
+          const opt = document.createElement('option');
+          opt.value = v;
+          opt.textContent = v;
+          sel.appendChild(opt);
+        });
+      })
+      .catch(function(err){
+        document.getElementById('status').textContent = 'Could not load vehicles: ' + err.message;
+        document.getElementById('status').className = 'status err';
+      });
+
+    const form = document.getElementById('entryForm');
+    const statusEl = document.getElementById('status');
+    const submitBtn = document.getElementById('submitBtn');
+
+    form.addEventListener('submit', function(e){
+      e.preventDefault();
+      if(!catHidden.value){
+        statusEl.textContent = 'Select Repair or Maintenance above.';
+        statusEl.className = 'status err';
+        return;
+      }
+      submitBtn.disabled = true;
+      statusEl.textContent = 'Saving…';
+      statusEl.className = 'status';
+
+      const payload = {
+        pin: enteredPin,
+        vehicle: document.getElementById('vehicle').value,
+        category: catHidden.value,
+        item: document.getElementById('item').value,
+        cost: document.getElementById('cost').value,
+        details: document.getElementById('details').value,
+        serviceDate: document.getElementById('serviceDate').value,
+        mileage: document.getElementById('mileage').value,
+        enteredBy: document.getElementById('enteredBy').value
+      };
+
+      api(Object.assign({ action: 'submit' }, payload))
+        .then(function(){
+          document.getElementById('formView').style.display = 'none';
+          document.getElementById('stubDetail').textContent =
+            'Vehicle ' + payload.vehicle + ' — ' + payload.category + ' / ' + payload.item;
+          document.getElementById('stubView').classList.add('show');
+        })
+        .catch(function(err){
+          if (/pin/i.test(err.message)) {
+            // Wrong PIN - send them back to the lock screen
+            statusEl.textContent = '';
+            document.getElementById('formView').style.display = 'none';
+            lockView.style.display = 'flex';
+            lockErr.textContent = 'Incorrect PIN.';
+            digits.forEach(d => { d.value = ''; d.classList.remove('filled'); });
+            digits[0].focus();
+          } else {
+            statusEl.textContent = 'Error: ' + err.message;
+            statusEl.className = 'status err';
+          }
+          submitBtn.disabled = false;
+        });
+    });
+
+    document.getElementById('againBtn').addEventListener('click', function(){
+      form.reset();
+      setCategory('');
+      document.getElementById('serviceDate').valueAsDate = new Date();
+      document.getElementById('stubView').classList.remove('show');
+      document.getElementById('formView').style.display = 'block';
+      submitBtn.disabled = false;
+      statusEl.textContent = '';
+    });
+
+    // Link to the dashboard, gated by its own passcode.
+    // Note: this is a convenience gate, not security - the dashboard is its
+    // own public URL and is read-only apart from PIN-protected actions.
+    document.getElementById('dashBtn').addEventListener('click', function(){
+      const errEl = document.getElementById('dashErr');
+      const pass = window.prompt('Passcode:');
+      if (pass === null) return;
+      if (pass.trim().toLowerCase() === 'booo') {
+        errEl.textContent = '';
+        window.location.href = 'dashboard.html';
+      } else {
+        errEl.textContent = 'Incorrect passcode.';
+      }
+    });
+  </script>
+</body>
+</html>
