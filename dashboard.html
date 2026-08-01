@@ -85,6 +85,18 @@
     .veh-item .n{ font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:14px; }
     .veh-item .d{ font-size:11.5px; color:var(--fog); }
     .veh-item.off .n{ color:var(--fog); }
+    .group-label{
+      grid-column:1 / -1;
+      font-family:'IBM Plex Mono',monospace;
+      font-size:11px;
+      letter-spacing:.12em;
+      text-transform:uppercase;
+      color:var(--fog);
+      border-top:1px solid var(--line);
+      padding-top:12px;
+      margin-top:6px;
+    }
+    .group-label:first-child{ border-top:none; padding-top:0; margin-top:0; }
 
     main{ padding:24px 20px 60px; max-width:1000px; margin:0 auto; }
     .screen{ display:none; }
@@ -426,6 +438,15 @@
     // ---- vehicle roster (drives both the batch picker and the Vehicles screen) ----
     let roster = [];
 
+    // Active vehicles first, then by number. Applied at render time so the
+    // group headers always match what's under them, even after a toggle.
+    function sortedRoster(){
+      return roster.slice().sort(function(a, b){
+        if (a.active !== b.active) return a.active ? -1 : 1;
+        return Number(a.vehicle) - Number(b.vehicle);
+      });
+    }
+
     api({ action: 'roster' }).then(function(data){
       roster = data;
       renderBatchList();
@@ -440,7 +461,16 @@
     function renderBatchList(){
       const list = document.getElementById('batchList');
       list.innerHTML = '';
-      roster.forEach(v => {
+      let lastGroup = null;
+      sortedRoster().forEach(v => {
+        const group = v.active ? 'Active' : 'Inactive';
+        if (group !== lastGroup) {
+          const hdr = document.createElement('div');
+          hdr.className = 'group-label';
+          hdr.textContent = group;
+          list.appendChild(hdr);
+          lastGroup = group;
+        }
         const el = document.createElement('label');
         el.className = 'veh-item' + (v.active ? ' on' : '');
         el.innerHTML =
@@ -482,7 +512,16 @@
     function renderRoster(){
       const list = document.getElementById('rosterList');
       list.innerHTML = '';
-      roster.forEach(v => {
+      let lastGroup = null;
+      sortedRoster().forEach(v => {
+        const group = v.active ? 'Active' : 'Inactive';
+        if (group !== lastGroup) {
+          const hdr = document.createElement('div');
+          hdr.className = 'group-label';
+          hdr.textContent = group;
+          list.appendChild(hdr);
+          lastGroup = group;
+        }
         const el = document.createElement('label');
         el.className = 'veh-item ' + (v.active ? 'on' : 'off');
         el.innerHTML =
@@ -496,7 +535,10 @@
           cb.disabled = true;
           statusEl.textContent = 'Saving\\u2026';
 
-          api({ action: 'setactive', vehicle: v.vehicle, active: want })
+          const pin = getRosterPin();
+          if (!pin) { cb.checked = !want; cb.disabled = false; statusEl.textContent = ''; return; }
+
+          api({ action: 'setactive', vehicle: v.vehicle, active: want, pin: pin })
             .then(function(){
               v.active = want;
               el.classList.toggle('on', want);
@@ -509,12 +551,20 @@
             .catch(function(err){
               cb.checked = !want;
               cb.disabled = false;
+              rosterPin = null; // wrong PIN - ask again next time
               statusEl.textContent = 'Error: ' + err.message;
             });
         });
         list.appendChild(el);
       });
       updateRosterCount();
+    }
+
+    // Asked once per session, then remembered for further roster edits
+    let rosterPin = null;
+    function getRosterPin(){
+      if (!rosterPin) rosterPin = window.prompt('Station PIN (to edit the roster):');
+      return rosterPin;
     }
 
     function updateRosterCount(){
