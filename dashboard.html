@@ -102,8 +102,19 @@
     .fleet-card{
       background:var(--panel); border:1px solid var(--line); border-radius:12px;
       padding:15px; cursor:pointer; transition:border-color .12s ease, transform .08s ease;
+      position:relative;
     }
     .fleet-card:hover{ border-color:var(--amber); transform:translateY(-1px); }
+    .badge{
+      position:absolute; top:12px; right:12px;
+      width:14px; height:14px;
+    }
+    .badge.ok{
+      border-radius:50%;
+      background:#1E7A46;
+      box-shadow:0 0 0 2px rgba(30,122,70,.22);
+    }
+    .badge.overdue svg{ display:block; width:14px; height:14px; }
     .fleet-card .veh{
       font-family:'IBM Plex Mono',monospace; font-size:18px;
       font-weight:600; color:var(--amber);
@@ -258,7 +269,17 @@
     <!-- FLEET (home) -->
     <div class="screen active" id="screen-fleet">
       <div class="section-title">Fleet Overview</div>
-      <div class="hint">Most recently serviced first. Tap a vehicle for its full history.</div>
+      <div class="hint">Most recently serviced first. Tap a vehicle for its full history.
+        <span style="display:inline-block; margin-left:10px;">
+          <span style="display:inline-block; width:9px; height:9px; border-radius:50%; background:#1E7A46; vertical-align:middle;"></span>
+          serviced within 30 days
+        </span>
+        <span style="display:inline-block; margin-left:10px;">
+          <svg viewBox="0 0 24 24" fill="#B3261E" style="width:11px; height:11px; vertical-align:middle;" xmlns="http://www.w3.org/2000/svg"><path d="M12 2 1 21h22L12 2z"/><rect x="11" y="9" width="2" height="6" fill="#fff"/><rect x="11" y="17" width="2" height="2" fill="#fff"/></svg>
+          nothing in 60+ days
+        </span>
+        <span style="color:var(--fog);">(active vehicles only)</span>
+      </div>
       <div class="fleet-grid" id="fleetGrid"><div class="loading">Loading fleet&hellip;</div></div>
     </div>
 
@@ -475,10 +496,7 @@
           cb.disabled = true;
           statusEl.textContent = 'Saving\\u2026';
 
-          const pin = getRosterPin();
-          if (!pin) { cb.checked = !want; cb.disabled = false; statusEl.textContent = ''; return; }
-
-          api({ action: 'setactive', vehicle: v.vehicle, active: want, pin: pin })
+          api({ action: 'setactive', vehicle: v.vehicle, active: want })
             .then(function(){
               v.active = want;
               el.classList.toggle('on', want);
@@ -491,7 +509,6 @@
             .catch(function(err){
               cb.checked = !want;
               cb.disabled = false;
-              rosterPin = null; // wrong PIN - ask again next time
               statusEl.textContent = 'Error: ' + err.message;
             });
         });
@@ -504,13 +521,6 @@
       const n = roster.filter(v => v.active).length;
       document.getElementById('rosterCount').textContent =
         n + ' of ' + roster.length + ' active';
-    }
-
-    // Ask for the PIN once per session for roster edits
-    let rosterPin = null;
-    function getRosterPin(){
-      if (!rosterPin) rosterPin = window.prompt('Station PIN (to edit the roster):');
-      return rosterPin;
     }
 
     // ---- vehicle dropdown (MMR screen) ----
@@ -667,7 +677,28 @@
       summary.forEach(v => {
         const card = document.createElement('div');
         card.className = 'fleet-card';
-        card.innerHTML =
+
+        // Status badge - active vehicles only.
+        //   serviced within 30 days -> green dot
+        //   nothing in 60+ days     -> red warning triangle
+        //   in between              -> no badge
+        let badge = '';
+        if (v.active && v.daysSinceService !== null) {
+          if (v.daysSinceService <= 30) {
+            badge = '<span class="badge ok" title="Serviced ' + v.daysSinceService +
+                    ' day(s) ago"></span>';
+          } else if (v.daysSinceService >= 60) {
+            badge = '<span class="badge overdue" title="No service in ' +
+                    v.daysSinceService + ' days">' +
+                    '<svg viewBox="0 0 24 24" fill="#B3261E" xmlns="http://www.w3.org/2000/svg">' +
+                    '<path d="M12 2 1 21h22L12 2z"/>' +
+                    '<rect x="11" y="9" width="2" height="6" fill="#fff"/>' +
+                    '<rect x="11" y="17" width="2" height="2" fill="#fff"/>' +
+                    '</svg></span>';
+          }
+        }
+
+        card.innerHTML = badge +
           '<div class="veh">#' + esc(v.vehicle) + '</div>' +
           '<div class="last">Last service: ' + (v.lastUpdated ? esc(v.lastUpdated) : '\u2014') + '</div>' +
           '<div class="count">' + v.count + ' event(s) &middot; ' + money(v.totalCost) + ' total</div>';
